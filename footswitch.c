@@ -1,25 +1,3 @@
-/*
-Copyright (c) 2012 Radoslav Gerganov <rgerganov@gmail.com>
-Copyright (c) 2012 Daniel Manjarres <danmanj@gmail.com>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-*/
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -55,7 +33,8 @@ pedal_data *curr_pedal = &pd.pedals[1]; // start at the second pedal
 
 void usage() {
     fprintf(stderr, "Usage: footswitch [-123] [-r] [-s <string>] [-S <raw_string>] [-ak <key>] [-m <modifier>] [-b <button>] [-xyw <XYW>]\n"
-        "   -r          - read all pedals\n"
+        "   -r          - read all pedals, all devices\n"
+        "   -n          - specify the device number to modify"
         "   -1          - program the first pedal\n"
         "   -2          - program the second pedal (default)\n"
         "   -3          - program the third pedal\n"
@@ -72,7 +51,7 @@ void usage() {
     exit(1);
 }
 
-void init_pid(unsigned short vid, unsigned short pid) {
+void init_pid(unsigned short vid, unsigned short pid, int seq) {
 #ifdef OSX
     hid_init();
     dev = hid_open(vid, pid, NULL);
@@ -83,8 +62,12 @@ void init_pid(unsigned short vid, unsigned short pid) {
     ptr = info;
     while (ptr != NULL) {
         if (ptr->interface_number == 1) {
-            dev = hid_open_path(ptr->path);
-            break;
+            if (seq == 1) {
+                dev = hid_open_path(ptr->path);
+                break;
+            } else {
+                seq = seq - 1;
+            }
         }
         ptr = ptr->next;
     }
@@ -92,7 +75,7 @@ void init_pid(unsigned short vid, unsigned short pid) {
 #endif
 }
 
-void init() {
+void init(int seq) {
     unsigned short vid_pid[][2] = {
         {0x0c45, 0x7403},
         {0x0c45, 0x7404},
@@ -101,7 +84,7 @@ void init() {
     };
     int i = 0;
     for (i = 0 ; i < sizeof(vid_pid) / sizeof(vid_pid[0]) ; i++) {
-        init_pid(vid_pid[i][0], vid_pid[i][1]);
+        init_pid(vid_pid[i][0], vid_pid[i][1], seq);
         if (dev != NULL) {
             break;
         }
@@ -489,19 +472,27 @@ void write_pedals() {
 
 int main(int argc, char *argv[]) {
     int opt;
+    int curr_device = 1;
 
     if (argc == 1) {
         usage();
     }
     if (argc == 2 && strcmp(argv[1], "-r") == 0) {
-        init();
+        init(1);
+        read_pedals();
+        deinit();
+        init(2);
         read_pedals();
         deinit();
         return 0;
     }
+
     init_pedals();
-    while ((opt = getopt(argc, argv, "123rs:S:a:k:m:b:x:y:w:")) != -1) {
+    while ((opt = getopt(argc, argv, "n:123rs:S:a:k:m:b:x:y:w:")) != -1) {
         switch (opt) {
+            case 'n':
+                curr_device = atoi(optarg);
+                break;
             case '1':
                 curr_pedal = &pd.pedals[0];
                 break;
@@ -546,9 +537,9 @@ int main(int argc, char *argv[]) {
                 break;
         }
     }
-    init();
+    init(curr_device);
     write_pedals();
     deinit();
     return 0;
+    
 }
-
